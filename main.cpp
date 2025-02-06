@@ -3,6 +3,7 @@
 #include <vector>
 #include <future>
 #include <mutex>
+#include <atomic>
 #include "prime.h"
 #include "log.h"
 
@@ -15,6 +16,7 @@ typedef struct config {
 	int threads;
 	int threadType;
 	int printType;
+	int delay;
 	mutex mutex;
 };
 
@@ -26,17 +28,17 @@ void getPrimesFromRange(config &cfg, vector<logEntry> &logs, ull start, ull end,
 	for (ull i = start; i <= end; i++) {
 		if (isPrime(i)) {
 			primeString += to_string(i) + ", ";
-			this_thread::sleep_for(chrono::milliseconds(50));
 		}
+		this_thread::sleep_for(chrono::milliseconds(cfg.delay));
 	}
+
 	primeString.erase(primeString.length() - 2, primeString.length());
 	if (cfg.printType == 1) {
-		printf(logEntry(threadId, primeString).getString().c_str());
+		printf("%s\n", logEntry(threadId, primeString).getString().c_str());
 	}
 	else {
-		cfg.mutex.lock();
+		lock_guard<mutex> lock(cfg.mutex);
 		logs.emplace_back(logEntry(threadId, primeString));
-		cfg.mutex.unlock();
 	}
 }
 
@@ -50,7 +52,7 @@ void getPrimesByAllocation(config &cfg) {
 	if (cfg.number % cfg.threads != 0) {
 		divisions[divisions.size() - 1] += cfg.number % cfg.threads;
 	}
-	cout << logEntry(0, "Starting threads...").getString();
+	cout << logEntry(0, "Starting threads...").getString() << endl;
 	for (int i = 0; i < cfg.threads; i++) {
 		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1], i + 1));
 	}
@@ -69,20 +71,43 @@ void getPrimesByAllocation(config &cfg) {
 	cout << logEntry(0, "Threads finished.").getString() << endl;
 }
 
-void getSinglePrime(config &cfg, vector<logEntry> &logs, ull number, int threadId) {
-	if (isPrime(number)) {
-		printf(logEntry(threadId, to_string(number) + " is prime.").getString().c_str());
+void getSinglePrime(config &cfg, vector<logEntry> &logs, atomic<ull> &currentNumber, int threadId) {
+	ull number = currentNumber.fetch_add((ull) 1);
+	while (number <= cfg.number) {
+		this_thread::sleep_for(chrono::milliseconds(cfg.delay));
+		if (isPrime(number)) {
+			if (cfg.printType == 1) {
+				printf("%s\n", logEntry(threadId, to_string(number) + " is prime.").getString().c_str());
+			}
+			else {
+				lock_guard<mutex> lock(cfg.mutex);
+				logs.emplace_back(logEntry(threadId, to_string(number) + " is prime."));
+			}
+		}
+		number = currentNumber.fetch_add((ull) 1);
 	}
 }
 
-void getPrimesPerThread(config &cfg) {
-	vector<thread> threads(cfg.threads);
+void getPrimesThreadPerNumber(config &cfg) {
+	vector<thread> threads;
 	vector<logEntry> logs;
-	atomic<ull> currentNumber = 1;
-	
-	while (currentNumber <= cfg.number) {
+	atomic<ull> currentNumber = 2;
 
+	cout << logEntry(0, "Starting threads...").getString() << endl;
+	for (int i = 0; i < cfg.threads; i++) {
+		threads.emplace_back(getSinglePrime, ref(cfg), ref(logs), ref(currentNumber), i + 1);
 	}
+	for (auto& thread : threads) {
+		thread.join();
+	}
+	
+	if (cfg.printType == 2) {
+		for (auto& log : logs) {
+			cout << log.getString() << endl;
+		}
+	}
+	cout << logEntry(0, "Threads finished.").getString() << endl;
+	 
 }
 
 int main() {
@@ -95,12 +120,12 @@ int main() {
 	cin >> cfg.threadType;
 	cout << "\n[Print type]\n    [1] Print as soon as a thread finishes\n    [2] Print when all threads are finished\n\nEnter: ";
 	cin >> cfg.printType;
-
+	cfg.delay = 0;
 	if (cfg.threadType <= 1) {
 		getPrimesByAllocation(ref(cfg));
 	}
 	else if (cfg.threadType >= 2) {
-		getPrimesPerThread(ref(cfg));
+		getPrimesThreadPerNumber(ref(cfg));
 	}
 
 	return 0;

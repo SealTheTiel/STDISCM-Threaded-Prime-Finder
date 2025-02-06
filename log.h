@@ -21,6 +21,6 @@ public:
 	}
 	
 	string getString() {
-		return this->time.getString() + "  [Thread: " + to_string(this->threadId) + "]: \t" + this->message + "\n";
+		return this->time.getString() + "  [Thread: " + to_string(this->threadId) + "]: \t" + this->message;
 	}
 };

@@ -33,6 +33,7 @@ void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uin
 	}
 
 	primeString.erase(primeString.length() - 2, primeString.length());
+	if (primeString == "Primes") { primeString += ": None"; }
 	if (cfg.printType == 1) {
 		printf("%s\n", logEntry(threadId, primeString).getString().c_str());
 	}
@@ -46,6 +47,8 @@ void getPrimesByAllocation(config &cfg) {
 	vector<uint64_t> divisions = { (uint64_t)0 };
 	vector<thread> threads;
 	vector<logEntry> logs;
+	if (cfg.threads > cfg.number) { cfg.threads = cfg.number; }
+
 	for (uint64_t i = 1; i <= cfg.threads; i++) {
 		divisions.push_back(cfg.number / cfg.threads * i);
 	}
@@ -53,8 +56,8 @@ void getPrimesByAllocation(config &cfg) {
 		divisions[divisions.size() - 1] += cfg.number % cfg.threads;
 	}
 	cout << logEntry(0, "Starting threads...").getString() << endl;
-	for (uint64_t i = 0; i < cfg.threads; i++) {
-		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1], i + 1));
+	for (uint64_t i = 0; i < cfg.threads - 1; i++) {
+		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1] - 1, i + 1));
 	}
 
 	for (auto& thread : threads) {

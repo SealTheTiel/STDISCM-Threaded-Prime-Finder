@@ -7,6 +7,8 @@
 #include <mutex>
 #include <atomic>
 #include <map>
+#include <cmath>
+
 #include "prime.h"
 #include "log.h"
 #include "threadPool.h"
@@ -22,7 +24,7 @@ typedef struct config {
 	mutex mutex;
 };
 
-void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uint64_t end, int threadId) {
+void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uint64_t end, uint64_t threadId) {
 	if (start > end) { return; }
 	if (end <= 1) { return; }
 	string primeString = "Primes: ";
@@ -35,15 +37,18 @@ void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uin
 	}
 
 	primeString.erase(primeString.length() - 2, primeString.length());
-	if (primeString == "Primes") { primeString += ": None"; }
+	if (primeString == "Primes") { 
+		primeString += ": None"; 
+	}
 	if (cfg.printType == 1) {
-		printf("%s\n", logEntry(threadId, "Checking\t" + to_string(start) + " to\t" + to_string(end) + "\t" + primeString).getString().c_str());
+		printf("%s\n", logEntry(threadId, primeString).getString().c_str());
 	}
 	else {
 		lock_guard<mutex> lock(cfg.mutex);
 		logs.emplace_back(logEntry(threadId, primeString));
 	}
 }
+
 
 void getPrimesByAllocation(config &cfg) {
 	vector<uint64_t> divisions = { (uint64_t)0 };
@@ -59,7 +64,7 @@ void getPrimesByAllocation(config &cfg) {
 	}
 	cout << logEntry(0, "Starting threads...").getString() << endl;
 	for (uint64_t i = 0; i < cfg.threads; i++) {
-		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1], i ));
+		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1], i));
 	}
 
 	for (auto& thread : threads) {
@@ -76,61 +81,53 @@ void getPrimesByAllocation(config &cfg) {
 	cout << logEntry(0, "Threads finished.").getString() << endl;
 }
 
-void getSinglePrime(config &cfg, vector<logEntry> &logs, atomic<uint64_t> &currentNumber, int threadId) {
-	uint64_t number = currentNumber.fetch_add((uint64_t) 1);
-	while (number <= cfg.number) {
-		this_thread::sleep_for(chrono::milliseconds(cfg.delay));
-		if (isPrime(number)) {
-			if (cfg.printType == 1) {
-				printf("%s\n", logEntry(threadId, to_string(number) + " is prime.").getString().c_str());
-			}
-			else {
-				lock_guard<mutex> lock(cfg.mutex);
-				logs.emplace_back(logEntry(threadId, to_string(number) + " is prime."));
-			}
-		}
-		number = currentNumber.fetch_add((uint64_t) 1);
-	}
-}
-
 void checkPrimeMultithread(config &cfg, vector<logEntry> &logs, threadPool &pool, map<thread::id, uint64_t> &threadIdMap,  uint64_t number) {
 	if (number <= 1) { return; }
-	if (number <= 3) { return; }
+	if (number <= 3) { 
+		if (cfg.printType == 1) {
+			printf("%s\n", logEntry(0, to_string(number) + " is prime.").getString().c_str());
+		}
+		else {
+			lock_guard<mutex> lock(cfg.mutex);
+			logs.emplace_back(logEntry(0, to_string(number) + " is prime."));
+		}
+		return;
+	}
 	atomic<bool> isPrime = true;
-	atomic<thread::id> threadIdFinder;
+	atomic<thread::id> lastThreadChecked;
 
 	/*
 	 * Integers can be represented as 6k + i, where i = 0 -> 5
 	 * If i = 0, 2, 3, or 4, then 6k + i is divisible by 2 and/or 3
 	 * So we only need to check for i = 1 and i = 5
 	 */
-
-	if (number % 2 == 0 || number % 3 == 0) { return; }
-	for (uint64_t i = 5; i * i <= number; i += (uint64_t)6) {
-		pool.enqueue([number, i, &isPrime, &threadIdFinder] {
-			if (number % i == 0 || number + 2 % i == 0) {
+	if (number % 2 == 0 || number % 3 == 0) { isPrime = false; }
+	//cout << number << endl;
+	for (uint64_t i = 2; i * i <= number; i ++) {
+		pool.enqueue([number, i, &isPrime, &lastThreadChecked] {
+			//printf("%d enqueued!\n", i);
+			lastThreadChecked = this_thread::get_id();
+			if (number % i == 0) {
 				isPrime = false;
-				threadIdFinder = this_thread::get_id();
-				cout << this_thread::get_id() << " " << threadIdFinder << endl;
-				return;
 			}
 		});
 	}
 	if (isPrime) {
-		//uint64_t id;
-		//for (auto& pair : threadIdMap) {
-		//	if (pair.first == threadIdFinder) {
-		//		id = pair.second;
-		//		break;
-		//	}
-		//}
-		//if (cfg.printType == 1) {
-		//	printf("%s\n", logEntry(id, to_string(number) + " is prime.").getString().c_str());
-		//}
-		//else {
-		//	lock_guard<mutex> lock(cfg.mutex);
-		//	logs.emplace_back(logEntry(id, to_string(number) + " is prime."));
-		//}
+		uint64_t id = NULL;
+		for (auto& pair : threadIdMap) {
+			if (pair.first == lastThreadChecked) {
+				id = pair.second;
+				break;
+			}
+		}
+		if (id == NULL) { return; }
+		if (cfg.printType == 1) {
+			printf("%s\n", logEntry(id, to_string(number) + " is prime.").getString().c_str());
+		}
+		else {
+			lock_guard<mutex> lock(cfg.mutex);
+			logs.emplace_back(logEntry(id, to_string(number) + " is prime."));
+		}
 	}
 }
 
@@ -139,11 +136,8 @@ void getPrimesThreadPerNumber(config& cfg) {
 	threadPool threads(cfg.threads, ref(threadIdMap));
 	vector<logEntry> logs;
 	atomic<uint64_t> currentNumber = 2;
-	for (auto& pair : threadIdMap) {
-		cout << pair.first << " " << pair.second << endl;
-	}
 	cout << logEntry(0, "Starting threads...").getString() << endl;
-	for (uint64_t i = 0; i < cfg.number; i++) {
+	for (uint64_t i = 0; i <= cfg.number; i++) {
 		checkPrimeMultithread(ref(cfg), ref(logs), ref(threads), ref(threadIdMap), i);
 	}
 	if (cfg.printType == 2) {
@@ -154,6 +148,7 @@ void getPrimesThreadPerNumber(config& cfg) {
 	cout << logEntry(0, "Threads finished.").getString() << endl;
 	 
 }
+
 
 int main() {
 	config cfg;
@@ -168,7 +163,6 @@ int main() {
 			cfg.number = NULL;
 		}
 	}
-	cout << cfg.number << endl;
 
 	while (cfg.threads == NULL) {
 		cout << "\n[Threads]\n    Number of threads to use.\n\nEnter: ";
@@ -180,7 +174,6 @@ int main() {
 			cfg.threads = NULL;
 		}
 	}
-	cout << cfg.threads << endl;
 
 	while (cfg.threadType == NULL) {
 		cout << "\n[Threading type]\n    [1/A] Divide across the max number\n    [2/B] Thread each number linearly\n\nEnter: ";
@@ -197,8 +190,6 @@ int main() {
 			cout << "Please enter 1/A/a or 2/B/b\n\n";
 		}
 	}
-	cout << cfg.threadType << endl;
-	
 	while (cfg.printType == NULL) {
 		cout << "\n[Print type]\n    [1/A] Print as soon as a thread finishes\n    [2/B] Print when all threads are finished\n\nEnter: ";
 		cin >> temp;
@@ -214,7 +205,6 @@ int main() {
 			cout << "Please enter 1/A/a or 2/B/b\n\n";
 		}
 	}
-	cout << cfg.printType << endl;
 
 	cfg.delay = 0;
 	if (cfg.threadType <= 1) {

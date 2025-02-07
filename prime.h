@@ -1,6 +1,6 @@
 #pragma once
-typedef unsigned long long ull;
-bool isPrime(ull number) {
+
+bool isPrime(uint64_t number) {
 	if (number <= 1) return false;
 	if (number <= 3) return true;
 
@@ -11,7 +11,7 @@ bool isPrime(ull number) {
 	 */
 
 	if (number % 2 == 0 || number % 3 == 0) return false;
-	for (ull i = 5; i * i <= number; i += (ull) 6) {
+	for (uint64_t i = 5; i * i <= number; i += (uint64_t) 6) {
 		if (number % i == 0 || number % (i + 2) == 0) return false;
 	}
 	return true;

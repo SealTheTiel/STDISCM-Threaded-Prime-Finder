@@ -5,7 +5,7 @@
 class logEntry {
 public:
 	string message;
-	int threadId;
+	uint64_t threadId;
 	timestamp time;
 
 	logEntry() {
@@ -14,7 +14,7 @@ public:
 		this->time = timestamp();
 	}
 
-	logEntry(int threadId, string message) {
+	logEntry(uint64_t threadId, string message) {
 		this->threadId = threadId;
 		this->message = message;
 		this->time = timestamp();

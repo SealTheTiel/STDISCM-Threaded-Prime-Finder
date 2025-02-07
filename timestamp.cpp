@@ -6,14 +6,14 @@
 using namespace std;
 using namespace chrono;
 
-timestamp::timestamp(int day, int month, int year, int hour, int minute, int second, int millisecond) {
+timestamp::timestamp(int day, int month, int year, int hour, int minute, int second, int nanosecond) {
 	this->day = day;
 	this->month = month;
 	this->year = year;
 	this->hour = hour;
 	this->minute = minute;
 	this->second = second;
-	this->nanosecond = millisecond;
+	this->nanosecond = nanosecond;
 };
 
 timestamp::timestamp() {
@@ -26,7 +26,7 @@ timestamp::timestamp() {
 	this->hour = tmNow.tm_hour;
 	this->minute = tmNow.tm_min;
 	this->second = tmNow.tm_sec;
-	this->nanosecond = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count() % 1000;
+	this->nanosecond = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count() % 1000000000;
 };
 
 string timestamp::getString() {

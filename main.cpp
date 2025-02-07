@@ -6,8 +6,10 @@
 #include <future>
 #include <mutex>
 #include <atomic>
+#include <map>
 #include "prime.h"
 #include "log.h"
+#include "threadPool.h"
 
 using namespace std;
 
@@ -25,7 +27,7 @@ void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uin
 	if (end <= 1) { return; }
 	string primeString = "Primes: ";
 	vector<uint64_t> primes;
-	for (uint64_t i = start; i <= end; i++) {
+	for (uint64_t i = start + 1; i <= end; i++) {
 		if (isPrime(i)) {
 			primeString += to_string(i) + ", ";
 		}
@@ -35,7 +37,7 @@ void getPrimesFromRange(config &cfg, vector<logEntry> &logs, uint64_t start, uin
 	primeString.erase(primeString.length() - 2, primeString.length());
 	if (primeString == "Primes") { primeString += ": None"; }
 	if (cfg.printType == 1) {
-		printf("%s\n", logEntry(threadId, primeString).getString().c_str());
+		printf("%s\n", logEntry(threadId, "Checking\t" + to_string(start) + " to\t" + to_string(end) + "\t" + primeString).getString().c_str());
 	}
 	else {
 		lock_guard<mutex> lock(cfg.mutex);
@@ -56,8 +58,8 @@ void getPrimesByAllocation(config &cfg) {
 		divisions[divisions.size() - 1] += cfg.number % cfg.threads;
 	}
 	cout << logEntry(0, "Starting threads...").getString() << endl;
-	for (uint64_t i = 0; i < cfg.threads - 1; i++) {
-		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1] - 1, i + 1));
+	for (uint64_t i = 0; i < cfg.threads; i++) {
+		threads.emplace_back(thread(getPrimesFromRange, ref(cfg), ref(logs), divisions[i], divisions[i + 1], i ));
 	}
 
 	for (auto& thread : threads) {
@@ -67,7 +69,7 @@ void getPrimesByAllocation(config &cfg) {
 	if (cfg.printType == 2)
 	{	
 		for (auto& log : logs) {
-			cout << log.getString();
+			cout << log.getString() << endl;
 		}
 	}
 
@@ -91,19 +93,59 @@ void getSinglePrime(config &cfg, vector<logEntry> &logs, atomic<uint64_t> &curre
 	}
 }
 
-void getPrimesThreadPerNumber(config &cfg) {
-	vector<thread> threads;
+void checkPrimeMultithread(config &cfg, vector<logEntry> &logs, threadPool &pool, map<thread::id, uint64_t> &threadIdMap,  uint64_t number) {
+	if (number <= 1) { return; }
+	if (number <= 3) { return; }
+	atomic<bool> isPrime = true;
+	atomic<thread::id> threadIdFinder;
+
+	/*
+	 * Integers can be represented as 6k + i, where i = 0 -> 5
+	 * If i = 0, 2, 3, or 4, then 6k + i is divisible by 2 and/or 3
+	 * So we only need to check for i = 1 and i = 5
+	 */
+
+	if (number % 2 == 0 || number % 3 == 0) { return; }
+	for (uint64_t i = 5; i * i <= number; i += (uint64_t)6) {
+		pool.enqueue([number, i, &isPrime, &threadIdFinder] {
+			if (number % i == 0 || number + 2 % i == 0) {
+				isPrime = false;
+				threadIdFinder = this_thread::get_id();
+				cout << this_thread::get_id() << " " << threadIdFinder << endl;
+				return;
+			}
+		});
+	}
+	if (isPrime) {
+		//uint64_t id;
+		//for (auto& pair : threadIdMap) {
+		//	if (pair.first == threadIdFinder) {
+		//		id = pair.second;
+		//		break;
+		//	}
+		//}
+		//if (cfg.printType == 1) {
+		//	printf("%s\n", logEntry(id, to_string(number) + " is prime.").getString().c_str());
+		//}
+		//else {
+		//	lock_guard<mutex> lock(cfg.mutex);
+		//	logs.emplace_back(logEntry(id, to_string(number) + " is prime."));
+		//}
+	}
+}
+
+void getPrimesThreadPerNumber(config& cfg) {
+	map<thread::id, uint64_t> threadIdMap;
+	threadPool threads(cfg.threads, ref(threadIdMap));
 	vector<logEntry> logs;
 	atomic<uint64_t> currentNumber = 2;
-
+	for (auto& pair : threadIdMap) {
+		cout << pair.first << " " << pair.second << endl;
+	}
 	cout << logEntry(0, "Starting threads...").getString() << endl;
-	for (uint64_t i = 0; i < cfg.threads; i++) {
-		threads.emplace_back(getSinglePrime, ref(cfg), ref(logs), ref(currentNumber), i + 1);
+	for (uint64_t i = 0; i < cfg.number; i++) {
+		checkPrimeMultithread(ref(cfg), ref(logs), ref(threads), ref(threadIdMap), i);
 	}
-	for (auto& thread : threads) {
-		thread.join();
-	}
-	
 	if (cfg.printType == 2) {
 		for (auto& log : logs) {
 			cout << log.getString() << endl;

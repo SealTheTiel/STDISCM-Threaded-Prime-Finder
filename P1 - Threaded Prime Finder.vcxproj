@@ -134,11 +134,13 @@
   <ItemGroup>
     <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="threadPool.cpp" />
     <ClCompile Include="timestamp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="log.h" />
     <ClInclude Include="prime.h" />
+    <ClInclude Include="threadPool.h" />
     <ClInclude Include="timestamp.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
